@@ -83,7 +83,7 @@ public class CustomItem {
     }
 
     public String getDisplayName() {
-        return this.rarity.getColor() + this.displayName;
+        return this.displayName;
     }
 
     public Collection<Stats, Integer> getStats() {

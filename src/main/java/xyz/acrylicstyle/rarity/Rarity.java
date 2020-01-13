@@ -1,6 +1,7 @@
 package xyz.acrylicstyle.rarity;
 
 import org.bukkit.Bukkit;
+import org.bukkit.Material;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -39,8 +40,8 @@ public class Rarity extends JavaPlugin implements Listener {
 
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent e) {
-        int health = Utils.calculatePlayerMaxStats(e.getPlayer(), Stats.HEALTH)+100;
-        e.getPlayer().setHealth(health);
+        e.getPlayer().setMaxHealth(40);
+        e.getPlayer().setHealth(40);
         new BukkitRunnable() {
             @Override
             public void run() {
@@ -66,13 +67,17 @@ public class Rarity extends JavaPlugin implements Listener {
         if (e.getDamager().getType() == EntityType.PLAYER) {
             Player damager = (Player) e.getDamager();
             damage = Utils.calculatePlayerMaxStats(damager, Stats.TRUE_DAMAGE)
-                    + (Utils.stats.get(damager.getItemInHand()) == null ? 0 : Utils.stats.get(damager.getItemInHand()).get(Stats.DAMAGE))
+                    + (damager.getItemInHand() == null
+                            || damager.getItemInHand().getType() == Material.AIR
+                            || Utils.stats.get(damager.getItemInHand().getItemMeta().getDisplayName()) == null
+                                    ? 0 : Utils.stats.get(damager.getItemInHand().getItemMeta().getDisplayName()).get(Stats.DAMAGE))
                     + (Utils.calculatePlayerMaxStats(damager, Stats.STRENGTH) * 3);
         }
         if (e.getEntityType() == EntityType.PLAYER) {
             Player player = (Player) e.getEntity();
             double damageReduction = Utils.getDamageReduction(Utils.calculatePlayerMaxStats(player, Stats.DEFENCE) + Utils.calculatePlayerMaxStats(player, Stats.TRUE_DEFENCE));
-            e.setDamage(5*damage-(damage*damageReduction));
+            e.setDamage(0.1);
+            Utils.damagePlayer(player, (int) (5*damage-(damage*damageReduction)));
         } else {
             e.setDamage(5*e.getDamage());
         }

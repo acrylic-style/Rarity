@@ -82,7 +82,7 @@ public final class Utils {
 
     public static CustomItem getCustomItemByDisplayName(String displayName) {
         try {
-            return Utils.getCustomItemsCached().filter(custom -> custom.getDisplayName().equals(displayName)).first();
+            return Utils.getCustomItemsCached().filter(custom -> custom.getDisplayName().equals(ChatColor.stripColor(displayName))).first();
         } catch (Exception ignored) {
             return null;
         }
@@ -91,11 +91,11 @@ public final class Utils {
     public static StringCollection<ItemStack> recipes = new StringCollection<>();
     public static StringCollection<ItemStack> shapelessRecipes = new StringCollection<>();
     public static Collection<CollectionList<ItemStack>, ItemStack> shapelessRecipesTest = new Collection<>();
-    public static Collection<ItemStack, Collection<Stats, Integer>> stats = new Collection<>();
+    public static StringCollection<Collection<Stats, Integer>> stats = new StringCollection<>();
 
     public static void initializeRecipes() {
         Utils.getCustomItems().forEach(item -> {
-            stats.add(item.toItemStack(), item.getStats());
+            stats.add(item.getDisplayName(), item.getStats());
             ItemStack[] matrix = new ItemStack[9];
             item.getRecipesRaw().foreach((map, index) -> {
                 String id = map.getKey();
@@ -246,7 +246,7 @@ public final class Utils {
             if (meta.hasEnchants()) lore.add("");
             if (meta.hasEnchants())
                 meta.getEnchants().forEach((ench, level) -> lore.add(ChatColor.BLUE + Utils.toStringFromEnchantment(ench) + " " + Utils.toStringFromInteger(level)));
-            if (meta.hasEnchants()) lore.add("");
+            if (meta.hasEnchants() || statsCollection != null) lore.add("");
             RarityList rarity = VanillaItemRarity.getByName(item.getType().name());
             if (rarity == null) rarity = RarityList.COMMON;
             lore.add(rarity.getName());
@@ -255,12 +255,8 @@ public final class Utils {
             meta.setLore(lore);
             meta.addItemFlags(ItemFlag.HIDE_ENCHANTS, ItemFlag.HIDE_UNBREAKABLE, ItemFlag.HIDE_ATTRIBUTES);
             if (meta.hasEnchants()) meta.getEnchants().forEach((ench, level) -> meta.addEnchant(ench, level, true));
-            item.setItemMeta(meta);
-            return item;
         } else {
-            ItemStack item2 = new ItemStack(customItem.getMaterial());
-            ItemMeta meta2 = item2.getItemMeta();
-            if (meta.hasEnchants()) meta.getEnchants().forEach((ench, level) -> meta2.addEnchant(ench, level, true));
+            if (meta.hasEnchants()) meta.getEnchants().forEach((ench, level) -> meta.addEnchant(ench, level, true));
             List<String> lore = new ArrayList<>();
             if (customItem.getStats() != null) customItem.getStats().forEach((stats, level) -> lore.add(ChatColor.GRAY + stats.getName() + ": " + stats.getColor() + "+" + (Utils.getBonusStats(item, stats) + level) + stats.getSuffix()));
             if (meta.hasEnchants()) lore.add("");
@@ -269,13 +265,13 @@ public final class Utils {
             if (customItem.getLore() != null) lore.addAll(ICollectionList.asList(customItem.getLore()).map(l -> ChatColor.translateAlternateColorCodes('&', l)));
             lore.add("");
             lore.add(customItem.getRarity().getName() + " " + customItem.getCategory());
-            meta2.spigot().setUnbreakable(true);
-            meta2.setDisplayName(customItem.getRarity().getColor() + customItem.getDisplayName());
-            meta2.setLore(lore);
-            meta2.addItemFlags(ItemFlag.HIDE_ENCHANTS, ItemFlag.HIDE_UNBREAKABLE, ItemFlag.HIDE_ATTRIBUTES);
-            item2.setItemMeta(meta);
-            return item2;
+            meta.spigot().setUnbreakable(true);
+            meta.setDisplayName(customItem.getRarity().getColor() + customItem.getDisplayName());
+            meta.setLore(lore);
+            meta.addItemFlags(ItemFlag.HIDE_ENCHANTS, ItemFlag.HIDE_UNBREAKABLE, ItemFlag.HIDE_ATTRIBUTES);
         }
+        item.setItemMeta(meta);
+        return item;
     }
 
     public static ItemStack convertVanillaItem(Material material) {
@@ -283,6 +279,8 @@ public final class Utils {
         return convertVanillaItem(new ItemStack(material));
     }
 
+    public static Collection<UUID, Integer> playerMaxHealth = new Collection<>();
+    public static Collection<UUID, Integer> playerHealth = new Collection<>();
     public static Collection<UUID, Integer> playerMaxDefence = new Collection<>();
     public static Collection<UUID, Integer> playerMaxIntelligence = new Collection<>();
     public static Collection<UUID, Integer> playerIntelligence = new Collection<>();
@@ -297,13 +295,12 @@ public final class Utils {
     }
 
     private static void statsCheck(Stats stat, AtomicInteger sum, ItemStack item) {
-        Collection<Stats, Integer> stats = Utils.stats.get(item);
-        if (stats == null && item != null) stats = VanillaItemsStats.getByName(item.getType().name());
+        if (item == null || item.getType() == Material.AIR) return;
+        Collection<Stats, Integer> stats = Utils.stats.get(ChatColor.stripColor(item.getItemMeta().getDisplayName()));
+        if (stats == null) stats = VanillaItemsStats.getByName(item.getType().name());
         if (stats != null && stats.get(stat) != null) sum.addAndGet(stats.get(stat));
-        if (item != null) {
-            Integer protection = getEnchantment(item, Enchantment.PROTECTION_ENVIRONMENTAL);
-            if (stat == Stats.DEFENCE && protection != null) sum.addAndGet(protection*5);
-        }
+        Integer protection = getEnchantment(item, Enchantment.PROTECTION_ENVIRONMENTAL);
+        if (stat == Stats.DEFENCE && protection != null) sum.addAndGet(protection*5);
     }
 
     public static Integer getEnchantment(ItemStack item, Enchantment ench) {
@@ -323,12 +320,12 @@ public final class Utils {
         int health = calculatePlayerMaxStats(player, Stats.HEALTH)+100;
         int defence = calculatePlayerMaxStats(player, Stats.DEFENCE);
         int intelligence = calculatePlayerMaxStats(player, Stats.INTELLIGENCE)+100;
-        player.setMaxHealth(health);
-        player.setHealthScale(20);
+        playerMaxHealth.add(player.getUniqueId(), health);
+        if (!playerHealth.containsKey(player.getUniqueId())) playerHealth.add(player.getUniqueId(), health);
         playerMaxDefence.add(player.getUniqueId(), defence);
         playerMaxIntelligence.add(player.getUniqueId(), intelligence);
         if (playerIntelligence.get(player.getUniqueId()) == null) playerIntelligence.add(player.getUniqueId(), intelligence);
-        return "" + ChatColor.RED + ((int) player.getHealth()) + "/" + ((int) player.getMaxHealth()) + "❤     " + ChatColor.GREEN + playerMaxDefence.get(player.getUniqueId()) + " Defence     " + ChatColor.AQUA + playerIntelligence.get(player.getUniqueId()) + "/" + playerMaxIntelligence.get(player.getUniqueId()) + "✎ Mana";
+        return "" + ChatColor.RED + playerHealth.get(player.getUniqueId()) + "/" + playerMaxHealth.get(player.getUniqueId()) + "❤     " + ChatColor.GREEN + playerMaxDefence.get(player.getUniqueId()) + " Defence     " + ChatColor.AQUA + playerIntelligence.get(player.getUniqueId()) + "/" + playerMaxIntelligence.get(player.getUniqueId()) + "✎ Mana";
     }
 
     public static double getDamageReduction(int defence) {
@@ -345,5 +342,10 @@ public final class Utils {
             }
         }
         return t;
+    }
+
+    public static void damagePlayer(Player player, int damage) {
+        playerHealth.add(player.getUniqueId(), playerHealth.get(player.getUniqueId())-damage);
+        player.setHealth(40 * ((float) playerHealth.get(player.getUniqueId()) / (float) playerMaxHealth.get(player.getUniqueId())));
     }
 }
