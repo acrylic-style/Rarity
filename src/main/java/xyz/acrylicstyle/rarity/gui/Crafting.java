@@ -11,7 +11,6 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.scheduler.BukkitRunnable;
 import util.CollectionList;
-import util.ICollectionList;
 import xyz.acrylicstyle.rarity.Rarity;
 import xyz.acrylicstyle.rarity.utils.Utils;
 
@@ -132,6 +131,7 @@ public class Crafting implements InventoryHolder, Listener {
                     e.getInventory().setItem(28, new ItemStack(Material.AIR));
                     e.getInventory().setItem(29, new ItemStack(Material.AIR));
                     e.getInventory().setItem(30, new ItemStack(Material.AIR));
+                    e.getInventory().setItem(24, barrier);
                 }
             }.runTask(Rarity.getPlugin(Rarity.class));
             return;
@@ -166,7 +166,7 @@ public class Crafting implements InventoryHolder, Listener {
     }
 
     private ItemStack getShapelessRecipe(ItemStack[] matrix) {
-        CollectionList<CollectionList<ItemStack>> items = Utils.shapelessRecipesTest.keysList().filter(c -> c.containsAll(ICollectionList.asList(matrix)));
+        CollectionList<CollectionList<ItemStack>> items = Utils.shapelessRecipesTest.keysList().filterNullable(c -> Utils.containsAll(c.toArray(new ItemStack[0]), matrix));
         if (items == null) return null;
         return Utils.shapelessRecipesTest.get(items.first());
     }

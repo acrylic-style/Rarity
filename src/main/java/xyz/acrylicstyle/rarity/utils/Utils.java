@@ -14,6 +14,7 @@ import xyz.acrylicstyle.rarity.items.CustomRecipe;
 import xyz.acrylicstyle.rarity.items.VanillaItemRarity;
 import xyz.acrylicstyle.rarity.items.VanillaItemsStats;
 import xyz.acrylicstyle.tomeito_core.providers.ConfigProvider;
+import xyz.acrylicstyle.tomeito_core.utils.Log;
 
 import java.io.File;
 import java.util.*;
@@ -97,29 +98,31 @@ public final class Utils {
         Utils.getCustomItems().forEach(item -> {
             stats.add(item.getDisplayName(), item.getStats());
             ItemStack[] matrix = new ItemStack[9];
-            item.getRecipesRaw().foreach((map, index) -> {
-                String id = map.getKey();
-                CustomItem recipeItem = getCustomItemById(id);
-                int amount = (int) map.getValue();
-                if (recipeItem == null) {
-                    if (id.equalsIgnoreCase("null")) {
-                        matrix[index] = null;
+            if (item.getRecipesRaw().size() != 0) {
+                item.getRecipesRaw().foreach((map, index) -> {
+                    String id = map.getKey();
+                    CustomItem recipeItem = getCustomItemById(id);
+                    int amount = (int) map.getValue();
+                    if (recipeItem == null) {
+                        if (id.equalsIgnoreCase("null")) {
+                            matrix[index] = null;
+                        } else {
+                            ItemStack recipeVanillaItem = convertVanillaItem(Material.valueOf(id));
+                            recipeVanillaItem.setAmount(amount);
+                            matrix[index] = recipeVanillaItem;
+                        }
                     } else {
-                        ItemStack recipeVanillaItem = convertVanillaItem(Material.valueOf(id));
-                        recipeVanillaItem.setAmount(amount);
-                        matrix[index] = recipeVanillaItem;
+                        ItemStack recipeItem2 = recipeItem.toItemStack().clone();
+                        recipeItem2.setAmount(amount);
+                        matrix[index] = recipeItem2;
                     }
-                } else {
-                    ItemStack recipeItem2 = recipeItem.toItemStack().clone();
-                    recipeItem2.setAmount(amount);
-                    matrix[index] = recipeItem2;
-                }
-            });
-            int resultAmount = item.getResultAmount();
-            ItemStack resultItem2 = item.toItemStack().clone();
-            resultItem2.setAmount(resultAmount);
-            item.setRecipe(new CustomRecipe(matrix, resultItem2));
-            recipes.add(Arrays.toString(matrix), resultItem2);
+                });
+                int resultAmount = item.getResultAmount();
+                ItemStack resultItem2 = item.toItemStack().clone();
+                resultItem2.setAmount(resultAmount);
+                item.setRecipe(new CustomRecipe(matrix, resultItem2));
+                recipes.add(Arrays.toString(matrix), resultItem2);
+            }
         });
         Bukkit.recipeIterator().forEachRemaining(recipe -> {
             if (recipe instanceof ShapedRecipe) {
@@ -131,14 +134,17 @@ public final class Utils {
                         .map((str, index) -> str.toCharArray())
                         .forEach(character -> {
                             for (char c : character) {
-                                items.add(shapedRecipe.getIngredientMap().get(c));
+                                items.add(convertVanillaItem(shapedRecipe.getIngredientMap().get(c)));
                             }
                 });
                 recipes.add(Arrays.toString(expandItemStackArray(items.toArray(new ItemStack[0]), 9)), shapedRecipe.getResult());
             } else if (recipe instanceof ShapelessRecipe) {
                 ShapelessRecipe shapelessRecipe = (ShapelessRecipe) recipe;
-                shapelessRecipes.add(Arrays.toString(shapelessRecipe.getIngredientList().toArray(new ItemStack[0])), shapelessRecipe.getResult());
-                shapelessRecipesTest.add(ICollectionList.asList(shapelessRecipe.getIngredientList().toArray(new ItemStack[0])), shapelessRecipe.getResult());
+                ItemStack[] ingredient = ICollectionList.asList(shapelessRecipe.getIngredientList())
+                        .map(Utils::convertVanillaItem)
+                        .toArray(new ItemStack[0]);
+                if (trimList(shapelessRecipe.getIngredientList()).size() != 0) shapelessRecipes.add(Arrays.toString(ingredient), shapelessRecipe.getResult());
+                if (trimList(shapelessRecipe.getIngredientList()).size() != 0) shapelessRecipesTest.add(ICollectionList.asList(ingredient), shapelessRecipe.getResult());
             }
         });
     }
@@ -229,7 +235,7 @@ public final class Utils {
     }
 
     public static int getBonusStats(ItemStack item, Stats stats) {
-        if (stats == Stats.DEFENCE) return getEnchantmentNotNull(item, Enchantment.PROTECTION_ENVIRONMENTAL)*5;
+        if (stats == Stats.DEFENCE) return getEnchantmentNotNull(item, Enchantment.PROTECTION_ENVIRONMENTAL)*3;
         return 0;
     }
 
@@ -296,11 +302,12 @@ public final class Utils {
 
     private static void statsCheck(Stats stat, AtomicInteger sum, ItemStack item) {
         if (item == null || item.getType() == Material.AIR) return;
-        Collection<Stats, Integer> stats = Utils.stats.get(ChatColor.stripColor(item.getItemMeta().getDisplayName()));
+        Collection<Stats, Integer> stats =
+                Utils.stats.get(ChatColor.stripColor(item.getItemMeta().hasDisplayName() ? item.getItemMeta().getDisplayName() : getFriendlyName(item)));
         if (stats == null) stats = VanillaItemsStats.getByName(item.getType().name());
         if (stats != null && stats.get(stat) != null) sum.addAndGet(stats.get(stat));
         Integer protection = getEnchantment(item, Enchantment.PROTECTION_ENVIRONMENTAL);
-        if (stat == Stats.DEFENCE && protection != null) sum.addAndGet(protection*5);
+        if (stat == Stats.DEFENCE && protection != null) sum.addAndGet(protection*3);
     }
 
     public static Integer getEnchantment(ItemStack item, Enchantment ench) {
@@ -325,7 +332,9 @@ public final class Utils {
         playerMaxDefence.add(player.getUniqueId(), defence);
         playerMaxIntelligence.add(player.getUniqueId(), intelligence);
         if (playerIntelligence.get(player.getUniqueId()) == null) playerIntelligence.add(player.getUniqueId(), intelligence);
-        return "" + ChatColor.RED + playerHealth.get(player.getUniqueId()) + "/" + playerMaxHealth.get(player.getUniqueId()) + "❤     " + ChatColor.GREEN + playerMaxDefence.get(player.getUniqueId()) + " Defence     " + ChatColor.AQUA + playerIntelligence.get(player.getUniqueId()) + "/" + playerMaxIntelligence.get(player.getUniqueId()) + "✎ Mana";
+        return "" + ChatColor.RED + playerHealth.get(player.getUniqueId()) + "/" + playerMaxHealth.get(player.getUniqueId()) + Stats.HEALTH.getSymbol()
+                + "     " + ChatColor.GREEN + playerMaxDefence.get(player.getUniqueId()) + Stats.DEFENCE.getSymbol() + " Defence     "
+                + ChatColor.AQUA + playerIntelligence.get(player.getUniqueId()) + "/" + playerMaxIntelligence.get(player.getUniqueId()) + Stats.INTELLIGENCE.getSymbol() + " Mana";
     }
 
     public static double getDamageReduction(int defence) {
@@ -347,5 +356,28 @@ public final class Utils {
     public static void damagePlayer(Player player, int damage) {
         playerHealth.add(player.getUniqueId(), playerHealth.get(player.getUniqueId())-damage);
         player.setHealth(40 * ((float) playerHealth.get(player.getUniqueId()) / (float) playerMaxHealth.get(player.getUniqueId())));
+    }
+
+    public static <T> boolean containsAll(T[] arr1, T[] arr2) {
+        if (arr1 == null || arr2 == null) return false;
+        CollectionList<T> list1 = ICollectionList.asList(trimArray(arr1)).clone();
+        CollectionList<T> list2 = ICollectionList.asList(trimArray(arr2)).clone();
+        Log.debug("Contains: " + list1.join(", "));
+        list1 = list1.filter(list2::contains);
+        Log.debug("Contains: " + list1.join(", "));
+        return list1.size() == list2.size();
+    }
+
+    @SuppressWarnings("unchecked")
+    public static <T> T[] trimArray(T[] arr) {
+        return (T[]) trimList(ICollectionList.asList(arr)).toArray();
+    }
+
+    public static <T> CollectionList<T> trimCollectionList(CollectionList<T> t) {
+        return t.filter(Objects::nonNull);
+    }
+
+    public static <T> List<T> trimList(List<T> t) {
+        return trimCollectionList(ICollectionList.asList(t));
     }
 }
